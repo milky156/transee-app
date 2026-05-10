@@ -8,6 +8,7 @@ import { Card } from './ui/card';
 import { Checkbox } from './ui/checkbox';
 import { Label } from './ui/label';
 import { routes } from '../data/routes';
+import { getRoadPath, Coordinate } from '../utils/osrm';
 
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -33,6 +34,8 @@ export function TransportMap({ onBack }: TransportMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const routeLayers = useRef<Map<string, L.Polyline>>(new Map());
   const markerLayers = useRef<Map<string, L.Marker>>(new Map());
+  const [roadPaths, setRoadPaths] = useState<Map<string, Coordinate[]>>(new Map());
+  const [isLoadingPaths, setIsLoadingPaths] = useState(false);
 
   const toggleRoute = (routeId: string) => {
     setSelectedRoutes(prev =>
@@ -74,16 +77,52 @@ export function TransportMap({ onBack }: TransportMapProps) {
     markerLayers.current.forEach(marker => marker.remove());
     routeLayers.current.clear();
     markerLayers.current.clear();
+  }, [selectedRoutes]);
+
+  // Pre-fetch road paths for selected routes
+  useEffect(() => {
+    const fetchPaths = async () => {
+      const missingRoutes = routes.filter(r => selectedRoutes.includes(r.id) && !roadPaths.has(r.id));
+      if (missingRoutes.length === 0) return;
+
+      setIsLoadingPaths(true);
+      const newPaths = new Map(roadPaths);
+
+      for (const route of missingRoutes) {
+        const coords = route.stops.map(s => ({ lat: s.lat, lng: s.lng }));
+        const roadPath = await getRoadPath(coords);
+        newPaths.set(route.id, roadPath);
+      }
+
+      setRoadPaths(newPaths);
+      setIsLoadingPaths(false);
+    };
+
+    fetchPaths();
+  }, [selectedRoutes, roadPaths]);
+
+  // Render routes when roadPaths or selectedRoutes change
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    // Clear only route layers, keep markers if possible? 
+    // Actually, markers are cleared in the previous useEffect for simplicity
+    routeLayers.current.forEach(layer => layer.remove());
+    routeLayers.current.clear();
 
     const filteredRoutes = routes.filter(route => selectedRoutes.includes(route.id));
 
     filteredRoutes.forEach((route) => {
-      const positions = route.stops.map(stop => [stop.lat, stop.lng] as [number, number]);
+      const path = roadPaths.get(route.id);
+      if (!path) return; // Wait for path to be fetched
+
+      const positions = path.map(p => [p.lat, p.lng] as [number, number]);
 
       const polyline = L.polyline(positions, {
         color: route.color,
         weight: 5,
-        opacity: 0.8
+        opacity: 0.8,
+        lineJoin: 'round'
       }).addTo(mapRef.current!);
 
       polyline.bindPopup(`
@@ -116,7 +155,7 @@ export function TransportMap({ onBack }: TransportMapProps) {
     } else {
       mapRef.current.setView([8.947864, 125.543641], 13);
     }
-  }, [selectedRoutes]);
+  }, [selectedRoutes, roadPaths]);
 
   return (
     <div className="min-h-screen md:h-screen bg-gradient-to-br from-purple-950 to-purple-800 text-white flex flex-col">
@@ -207,8 +246,14 @@ export function TransportMap({ onBack }: TransportMapProps) {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="w-full h-[50vh] md:h-auto md:flex-1 rounded-lg overflow-hidden shadow-2xl shrink-0 order-1 md:order-2"
+          className="w-full h-[50vh] md:h-auto md:flex-1 relative rounded-lg overflow-hidden shadow-2xl shrink-0 order-1 md:order-2"
         >
+          {isLoadingPaths && (
+            <div className="absolute top-4 right-4 z-[1000] bg-purple-900/80 backdrop-blur-md px-3 py-1.5 rounded-full text-xs font-medium border border-purple-400/30 flex items-center gap-2 shadow-lg animate-pulse">
+              <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" />
+              Fetching road paths...
+            </div>
+          )}
           <div ref={mapContainerRef} style={{ height: '100%', width: '100%', minHeight: '300px' }} />
         </motion.div>
       </div>
