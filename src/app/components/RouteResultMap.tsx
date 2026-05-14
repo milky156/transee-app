@@ -49,12 +49,17 @@ export function RouteResultMap({ result }: RouteResultMapProps) {
       for (let i = 0; i < result.steps.length; i++) {
         const step = result.steps[i];
         if (step.path && step.path.length > 0) {
-          const stepKey = `${step.from.id}-${step.to.id}-${step.route}`;
+          const stepKey = `${step.fromName}-${step.toName}-${step.route || step.type}`;
           let detailedPath = roadPaths.get(stepKey);
           
           if (!detailedPath) {
-            const coords = step.path.map(s => ({ lat: s.lat, lng: s.lng }));
-            detailedPath = await getRoadPath(coords);
+            // For walking/tricycle, we might not always need OSRM if it's short, 
+            // but let's use it for consistency if it's more than 2 points
+            if (step.path.length > 2) {
+              detailedPath = step.path;
+            } else {
+              detailedPath = await getRoadPath(step.path);
+            }
             newRoadPaths.set(stepKey, detailedPath);
             pathsChanged = true;
           }
@@ -71,14 +76,14 @@ export function RouteResultMap({ result }: RouteResultMapProps) {
           positions.forEach(pos => bounds.extend(pos));
 
           // Add marker for the start of the step
-          const startStop = step.path[0];
-          L.marker([startStop.lat, startStop.lng]).addTo(map)
-            .bindPopup(`<b>${startStop.name}</b><br>Board ${step.routeName}`);
+          const startCoord = step.path[0];
+          L.marker([startCoord.lat, startCoord.lng]).addTo(map)
+            .bindPopup(`<b>${step.fromName}</b><br>${step.instruction}`);
 
           // Add marker for the end of the step
-          const endStop = step.path[step.path.length - 1];
-          L.marker([endStop.lat, endStop.lng]).addTo(map)
-            .bindPopup(`<b>${endStop.name}</b><br>Alight here`);
+          const endCoord = step.path[step.path.length - 1];
+          L.marker([endCoord.lat, endCoord.lng]).addTo(map)
+            .bindPopup(`<b>${step.toName}</b>`);
         }
       }
 

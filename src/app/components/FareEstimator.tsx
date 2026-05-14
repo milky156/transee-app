@@ -111,11 +111,18 @@ export function FareEstimator({ onBack }: FareEstimatorProps) {
               animate={{ opacity: 1, y: 0 }}
             >
               <Card className="bg-white/10 backdrop-blur-md border-white/20 p-8 text-center">
-                <h3 className="font-semibold mb-2" style={{ fontSize: '1.25rem' }}>Estimated Fare</h3>
-                <div className="font-bold text-green-300 mb-2" style={{ fontSize: '3rem' }}>
-                  ₱{fare.toFixed(2)}
+                <h3 className="font-semibold mb-2 text-white/70" style={{ fontSize: '1rem' }}>Regular Fare</h3>
+                <div className="font-bold text-white mb-4" style={{ fontSize: '2.5rem' }}>
+                  ₱{calculateFare(parseFloat(distance), 'regular').toFixed(2)}
                 </div>
-                <p className="text-green-200 text-sm mb-4">{getDiscountText()}</p>
+                
+                <div className="h-px bg-white/10 w-full mb-4" />
+                
+                <h3 className="font-semibold mb-2 text-green-300/70" style={{ fontSize: '0.875rem' }}>Student / Senior / PWD</h3>
+                <div className="font-bold text-green-300 mb-2" style={{ fontSize: '2rem' }}>
+                  ₱{calculateFare(parseFloat(distance), 'student').toFixed(2)}
+                </div>
+                <p className="text-green-200/60 text-[10px] mb-4">(20% discount applied)</p>
 
                 <div className="bg-white/5 rounded-lg p-4 text-left text-sm space-y-2">
                   <h4 className="font-semibold mb-2">Fare Structure (City Ordinance No. 7194-2024)</h4>

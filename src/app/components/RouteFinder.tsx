@@ -4,10 +4,11 @@ import { ArrowLeft, ArrowRight, Locate } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { stops } from '../data/routes';
-import { findRoute, RouteResult } from '../utils/routing';
+import { findIntelligentRoute, RouteResult } from '../utils/routing';
 import { RouteResultMap } from './RouteResultMap';
 import { LocationSearch } from './LocationSearch';
 import { findNearestStop } from '../utils/geocoding';
+import { MapPin, Footprints, Bike, Bus, Info } from 'lucide-react';
 
 interface RouteFinderProps {
   onBack: () => void;
@@ -17,11 +18,20 @@ interface RouteFinderProps {
 export function RouteFinder({ onBack, initialDestination }: RouteFinderProps) {
   const [fromStopId, setFromStopId] = useState<string>('');
   const [toStopId, setToStopId] = useState<string>(initialDestination || '');
+  const [fromName, setFromName] = useState<string>('');
+  const [toName, setToName] = useState<string>('');
+  const [fromCoords, setFromCoords] = useState<{ lat: number, lng: number } | null>(null);
+  const [toCoords, setToCoords] = useState<{ lat: number, lng: number } | null>(null);
   const [result, setResult] = useState<RouteResult | null>(null);
 
   const handleFindRoute = () => {
-    if (fromStopId && toStopId) {
-      const routeResult = findRoute(fromStopId, toStopId);
+    if (fromCoords && toCoords) {
+      const routeResult = findIntelligentRoute(
+        fromName || 'Starting Point',
+        fromCoords,
+        toName || 'Destination',
+        toCoords
+      );
       setResult(routeResult);
     }
   };
@@ -34,6 +44,8 @@ export function RouteFinder({ onBack, initialDestination }: RouteFinderProps) {
           const lng = position.coords.longitude;
           const nearest = findNearestStop(lat, lng);
           setFromStopId(nearest.id);
+          setFromName('Current Location');
+          setFromCoords({ lat, lng });
         },
         (error) => {
           console.error("Error getting location", error);
@@ -91,8 +103,10 @@ export function RouteFinder({ onBack, initialDestination }: RouteFinderProps) {
                   label=""
                   placeholder="Enter area or stop..."
                   value={fromStopId}
-                  selectedName={getStopName(fromStopId)}
+                  selectedName={fromName || getStopName(fromStopId)}
                   onSelect={(loc) => {
+                    setFromName(loc.name);
+                    setFromCoords({ lat: loc.lat, lng: loc.lng });
                     if (loc.isStop) {
                       setFromStopId(loc.id);
                     } else {
@@ -115,8 +129,10 @@ export function RouteFinder({ onBack, initialDestination }: RouteFinderProps) {
                   label=""
                   placeholder="Enter destination..."
                   value={toStopId}
-                  selectedName={getStopName(toStopId)}
+                  selectedName={toName || getStopName(toStopId)}
                   onSelect={(loc) => {
+                    setToName(loc.name);
+                    setToCoords({ lat: loc.lat, lng: loc.lng });
                     if (loc.isStop) {
                       setToStopId(loc.id);
                     } else {
@@ -131,7 +147,7 @@ export function RouteFinder({ onBack, initialDestination }: RouteFinderProps) {
             <Button
               className="w-full mt-10 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white h-14 text-lg font-bold shadow-xl shadow-blue-600/20 rounded-xl transition-all hover:scale-[1.01] active:scale-[0.99]"
               onClick={handleFindRoute}
-              disabled={!fromStopId || !toStopId || fromStopId === toStopId}
+              disabled={!fromCoords || !toCoords || fromStopId === toStopId}
             >
               Search Multicab Routes
             </Button>
@@ -154,6 +170,9 @@ export function RouteFinder({ onBack, initialDestination }: RouteFinderProps) {
                     <div className="bg-white/10 rounded-lg px-4 py-2">
                       <div className="text-blue-200">Estimated Fare</div>
                       <div className="font-semibold">₱{result.totalFare.toFixed(2)}</div>
+                      <div className="text-[10px] text-green-300/90 font-medium mt-1 border-t border-white/5 pt-1">
+                        ₱{(result.totalFare * 0.8).toFixed(2)} (Disc.)
+                      </div>
                     </div>
                     <div className="bg-white/10 rounded-lg px-4 py-2">
                       <div className="text-blue-200">Transfers</div>
@@ -161,24 +180,40 @@ export function RouteFinder({ onBack, initialDestination }: RouteFinderProps) {
                     </div>
                   </div>
 
-                  <div className="space-y-3">
+                  <div className="space-y-4">
+                    {result.isFallback && (
+                      <div className="flex items-center gap-2 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg text-blue-200 text-sm">
+                        <Info className="w-4 h-4 shrink-0" />
+                        <span>Some steps involve walking or tricycle transfers to the nearest transport route.</span>
+                      </div>
+                    )}
+                    
                     {result.steps.map((step, idx) => (
                       <div
                         key={idx}
-                        className="bg-white/5 rounded-lg p-4 border-l-4"
-                        style={{ borderColor: step.routeColor }}
+                        className="bg-white/5 rounded-xl p-5 border border-white/10 relative overflow-hidden"
                       >
-                        <div className="flex items-start gap-3">
+                        <div 
+                          className="absolute left-0 top-0 w-1.5 h-full" 
+                          style={{ backgroundColor: step.routeColor }}
+                        />
+                        <div className="flex items-start gap-4">
                           <div
-                            className="w-16 h-16 rounded-lg flex items-center justify-center font-semibold flex-shrink-0"
+                            className="w-12 h-12 rounded-xl flex items-center justify-center font-bold text-white shrink-0 shadow-lg"
                             style={{ backgroundColor: step.routeColor }}
                           >
-                            {step.route}
+                            {step.type === 'walking' && <Footprints className="w-6 h-6" />}
+                            {step.type === 'tricycle' && <Bike className="w-6 h-6" />}
+                            {step.type === 'multicab' && (step.route || <Bus className="w-6 h-6" />)}
                           </div>
                           <div className="flex-1">
-                            <div className="font-semibold mb-1">{step.routeName}</div>
-                            <div className="text-sm text-blue-200 mb-2">{step.instruction}</div>
-                            <div className="text-xs text-blue-300">{step.distance.toFixed(2)} km</div>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-bold text-white text-lg">{step.routeName}</span>
+                              <span className="text-xs font-medium text-blue-300 bg-white/5 px-2 py-1 rounded-full border border-white/5">
+                                {step.distance.toFixed(2)} km
+                              </span>
+                            </div>
+                            <div className="text-blue-100/80 leading-relaxed">{step.instruction}</div>
                           </div>
                         </div>
                       </div>
